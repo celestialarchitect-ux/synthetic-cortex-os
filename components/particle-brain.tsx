@@ -188,9 +188,9 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
       const H = rect.height;
       const state = stateRef.current;
 
-      // Clear with heavier persistence — trails build up into visible density
+      // Clear — higher alpha kills background ghost trails so only live particles show
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = "rgba(2, 3, 10, 0.14)";
+      ctx.fillStyle = "rgba(2, 3, 10, 0.28)";
       ctx.fillRect(0, 0, W, H);
 
       // Build region anchor points in canvas coords
@@ -209,23 +209,9 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
         };
       });
 
-      // Region glow auras — TIGHT, low-intensity. Just a whisper of pigment at
-      // the region center to tint the particle field, not a neon halo.
+      // Region glow auras REMOVED — regions now emerge purely from orbital particle
+      // density. No more pre-drawn blobs behind the swarm.
       ctx.globalCompositeOperation = "lighter";
-      for (const a of regionAnchors) {
-        const vis = a.act * 0.6 + a.mem * 0.25;
-        if (vis < 0.18) continue;
-        const glowRadius = 22 + a.act * 38 + a.mem * 16;
-        const grad = ctx.createRadialGradient(a.cx, a.cy, 0, a.cx, a.cy, glowRadius);
-        const [rr, gg, bb] = a.color;
-        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${Math.min(0.10, vis * 0.12).toFixed(3)})`);
-        grad.addColorStop(0.5, `rgba(${rr},${gg},${bb},${Math.min(0.03, vis * 0.04).toFixed(3)})`);
-        grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(a.cx, a.cy, glowRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
 
       // Spawn new signals for active pathways on fresh engine tick
       if (state && state.tick !== lastTick) {
