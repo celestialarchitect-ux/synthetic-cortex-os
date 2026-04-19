@@ -83,7 +83,7 @@ interface Signal {
   alpha: number;
 }
 
-const PARTICLE_COUNT = 3000;
+const PARTICLE_COUNT = 4500;
 
 export function ParticleBrain({ height = 480 }: { height?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -164,12 +164,12 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
       const state = stateRef.current;
 
       // Clear with slight trail (gives light motion blur / persistence)
-      ctx.fillStyle = "rgba(2, 3, 10, 0.35)";
+      ctx.fillStyle = "rgba(2, 3, 10, 0.22)";
       ctx.fillRect(0, 0, W, H);
 
       // Build region anchor points in canvas coords
       const regionAnchors = REGIONS.map((reg) => {
-        const act = state?.activations[reg.id] ?? 0.1;
+        const act = state?.activations[reg.id] ?? 0.15;
         const mem = state?.memory_weights[reg.id] ?? 0;
         return {
           ...reg,
@@ -177,9 +177,9 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
           cy: reg.y * H,
           act,
           mem,
-          // Activation influences attractor radius + strength
-          pullRadius: 60 + act * 100 + mem * 40,
-          pullStrength: 0.008 + act * 0.04,
+          // Activation influences attractor radius + strength — stronger pulls so density is visible
+          pullRadius: 90 + act * 140 + mem * 60,
+          pullStrength: 0.015 + act * 0.08,
         };
       });
 
@@ -257,10 +257,11 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
         }
 
         // Alpha pulses with overall load + local pull
-        const alpha = 0.28 + bestWeight * 0.6 + (state ? state.load * 0.15 : 0);
+        const alpha = Math.min(0.95, 0.5 + bestWeight * 0.7 + (state ? state.load * 0.2 : 0));
+        const size = p.size + bestWeight * 1.2;
 
         ctx.fillStyle = `rgba(${p.r | 0},${p.g | 0},${p.b | 0},${alpha.toFixed(3)})`;
-        ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+        ctx.fillRect(p.x - size, p.y - size, size * 2, size * 2);
       }
 
       // Render signals along pathways

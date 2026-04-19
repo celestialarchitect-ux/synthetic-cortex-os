@@ -67,12 +67,18 @@ const PATHWAYS: Array<[RegionId, RegionId, string]> = [
 
 interface Telemetry {
   timestamp?: string;
+  tick?: number;
+  uptime_seconds?: number;
   task?: string;
   scenario?: string;
   mode?: string;
   activations?: Partial<Record<RegionId, number>>;
-  activePaths?: number[];
-  memory?: string[];
+  memory_weights?: Partial<Record<RegionId, number>>;
+  active_paths?: number[];
+  pathways?: Array<{ strength: number; flow: number; usage?: number }>;
+  subclusters?: Array<{ parent: string; name: string; strength: number }>;
+  load?: number;
+  memory_log?: string[];
 }
 
 interface Meta {
@@ -137,14 +143,13 @@ export default function CortexDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const isIdle =
-    !telemetry ||
-    telemetry.scenario === "idle" ||
-    !telemetry.task ||
-    telemetry.task.startsWith("Idle");
+  // Engine is always live once telemetry has arrived at least once
+  const hasTelemetry = !!telemetry;
+  const hasInjectedTask =
+    !!telemetry && telemetry.scenario === "active" && !!telemetry.task && !telemetry.task.startsWith("Idle");
 
   const activations = telemetry?.activations ?? {};
-  const activePathIndices = new Set(telemetry?.activePaths ?? []);
+  const activePathIndices = new Set(telemetry?.active_paths ?? []);
 
   const regions = useMemo(() => {
     return REGIONS.map((r) => ({
@@ -183,7 +188,7 @@ export default function CortexDashboard() {
               <Badge className="bg-slate-900 border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
                 Persistent Cognitive Brain Architecture
               </Badge>
-              {isIdle ? (
+              {!hasTelemetry ? (
                 <Badge className="bg-slate-900 border-slate-700 text-slate-500 text-[10px] uppercase tracking-wider gap-1">
                   <CircleDot className="w-3 h-3" />
                   Idle
@@ -240,18 +245,17 @@ export default function CortexDashboard() {
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
                   Current Session
                 </div>
-                {isIdle ? (
-                  <div className="text-sm text-slate-500 italic">
-                    No active session. Telemetry returning default idle state.
-                  </div>
+                {!hasTelemetry ? (
+                  <div className="text-sm text-slate-500 italic">Connecting to engine…</div>
                 ) : (
                   <>
                     <div className="text-sm text-slate-200 font-medium">
-                      {telemetry?.task}
+                      {hasInjectedTask ? telemetry?.task : "Baseline cognition — spontaneous firing field"}
                     </div>
-                    <div className="text-xs text-slate-500 mt-1 space-x-3">
-                      {telemetry?.scenario && <span>scenario: <span className="text-slate-400">{telemetry.scenario}</span></span>}
-                      {telemetry?.mode && <span>mode: <span className="text-slate-400">{telemetry.mode}</span></span>}
+                    <div className="text-xs text-slate-500 mt-1 space-x-3 font-mono">
+                      {typeof telemetry?.tick === "number" && <span>tick <span className="text-slate-400">{telemetry.tick}</span></span>}
+                      {typeof telemetry?.load === "number" && <span>load <span className="text-slate-400">{telemetry.load.toFixed(2)}</span></span>}
+                      {typeof telemetry?.uptime_seconds === "number" && <span>uptime <span className="text-slate-400">{formatUptime(telemetry.uptime_seconds)}</span></span>}
                     </div>
                   </>
                 )}
@@ -320,11 +324,11 @@ export default function CortexDashboard() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-slate-200">{r.name}</span>
                         <span className="text-xs font-mono text-slate-500 tabular-nums">
-                          {isIdle ? "—" : `${Math.round(r.activation * 100)}%`}
+                          {!hasTelemetry ? "—" : `${Math.round(r.activation * 100)}%`}
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">{r.role}</div>
-                      {!isIdle && r.activation > 0 && (
+                      {!!hasTelemetry && r.activation > 0 && (
                         <Progress
                           value={Math.round(r.activation * 100)}
                           className="h-1 bg-slate-800 mt-2"
@@ -364,7 +368,7 @@ export default function CortexDashboard() {
                       Current Activation
                     </div>
                     <div className="text-2xl font-mono text-slate-200">
-                      {isIdle ? "—" : `${Math.round(selectedRegionData.activation * 100)}%`}
+                      {!hasTelemetry ? "—" : `${Math.round(selectedRegionData.activation * 100)}%`}
                     </div>
                   </div>
 
@@ -390,7 +394,7 @@ export default function CortexDashboard() {
                     </div>
                     <div className="text-xs text-slate-400">
                       {connectedPathways.length} connected
-                      {!isIdle && (
+                      {!!hasTelemetry && (
                         <>, {connectedPathways.filter((p) => p.active).length} active</>
                       )}
                     </div>
@@ -462,19 +466,19 @@ export default function CortexDashboard() {
                 </CardContent>
               </Card>
 
-              {telemetry?.memory && telemetry.memory.length > 0 && (
+              {telemetry?.memory_log && telemetry.memory_log.length > 0 && (
                 <Card className="border-slate-800 bg-slate-900/60">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold text-slate-300 flex items-center gap-2">
                       <Database className="w-4 h-4 text-slate-400" />
-                      Memory Writes ({telemetry.memory.length})
+                      Engine Log ({telemetry.memory_log.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 space-y-2">
-                    {telemetry.memory.map((m, i) => (
+                    {telemetry.memory_log.map((m: string, i: number) => (
                       <div
                         key={i}
-                        className="text-sm text-slate-400 bg-slate-950/40 border border-slate-800 rounded p-2"
+                        className="text-xs text-slate-400 bg-slate-950/40 border border-slate-800 rounded p-2 font-mono"
                       >
                         {m}
                       </div>
@@ -542,6 +546,14 @@ export default function CortexDashboard() {
       </div>
     </div>
   );
+}
+
+function formatUptime(s: number): string {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h}h ${m}m`;
 }
 
 function MetaRow({
