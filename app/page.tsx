@@ -96,10 +96,12 @@ export default function CortexDashboard() {
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
   const [telemetryFetchedAt, setTelemetryFetchedAt] = useState<Date | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
-  const [now, setNow] = useState(new Date());
+  // now is null on SSR/first client render to avoid hydration mismatch on the clock
+  const [now, setNow] = useState<Date | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<RegionId>("executive");
 
   useEffect(() => {
+    setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
@@ -166,7 +168,7 @@ export default function CortexDashboard() {
   const connectedPathways = pathways.filter(
     (p) => p.a === selectedRegion || p.b === selectedRegion
   );
-  const telemetryStaleness = telemetryFetchedAt
+  const telemetryStaleness = telemetryFetchedAt && now
     ? Math.round((now.getTime() - telemetryFetchedAt.getTime()) / 1000)
     : null;
 
@@ -200,7 +202,9 @@ export default function CortexDashboard() {
             </p>
           </div>
           <div className="text-right text-xs text-slate-500 font-mono space-y-0.5">
-            <div>{now.toISOString().replace("T", " ").slice(0, 19)}Z</div>
+            <div suppressHydrationWarning>
+              {now ? `${now.toISOString().replace("T", " ").slice(0, 19)}Z` : "— — —"}
+            </div>
             {meta && (
               <div>
                 build <span className="text-slate-400">{meta.commit.slice(0, 7)}</span>
@@ -210,6 +214,25 @@ export default function CortexDashboard() {
             )}
           </div>
         </header>
+
+        {/* Brain visual (forked from DGFX/codrops-dreamy-particles, served from /brain) */}
+        <Card className="border-slate-800 bg-slate-950 overflow-hidden">
+          <CardContent className="p-0 relative">
+            <div className="absolute top-3 left-4 z-10 flex items-center gap-2 pointer-events-none">
+              <Brain className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-mono">Brain Visual</span>
+              <Badge className="bg-slate-900/80 backdrop-blur border-slate-700 text-slate-400 text-[9px]">
+                forked · DGFX/codrops-dreamy-particles
+              </Badge>
+            </div>
+            <iframe
+              src="/brain/index.html"
+              title="Cortex brain visualization"
+              className="w-full h-[480px] border-0 block"
+              loading="lazy"
+            />
+          </CardContent>
+        </Card>
 
         {/* Current session card */}
         <Card className="border-slate-800 bg-slate-900/60">
