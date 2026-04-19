@@ -1306,7 +1306,7 @@ export default function SyntheticCortexOSLiveUI() {
 
       {/* Footer */}
       <div className="flex items-center justify-between text-xs text-slate-600 pt-2 border-t border-slate-800">
-        <span>Synthetic Cortex OS · v0.1.0</span>
+        <span>Synthetic Cortex OS · v0.2.0</span>
         <span className="flex items-center gap-2">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
