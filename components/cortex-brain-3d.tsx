@@ -160,14 +160,19 @@ const CURL_VERT = /* glsl */`
     vec3 dy = vec3(0.0, e, 0.0);
     vec3 dz = vec3(0.0, 0.0, e);
 
-    float x1 = snoise(p + dy) - snoise(p - dy);
-    float x2 = snoise(p + dz) - snoise(p - dz);
-    float y1 = snoise(p + dz) - snoise(p - dz);
-    float y2 = snoise(p + dx) - snoise(p - dx);
-    float z1 = snoise(p + dx) - snoise(p - dx);
-    float z2 = snoise(p + dy) - snoise(p - dy);
+    // Three independent scalar potentials via offset base (true divergence-free curl)
+    vec3 p1 = p;
+    vec3 p2 = p + vec3(31.416, 0.0, 0.0);
+    vec3 p3 = p + vec3(0.0, 47.853, 0.0);
 
-    return normalize(vec3(x1 - x2, y1 - y2, z1 - z2)) / (2.0 * e);
+    float p1y = snoise(p1 + dy) - snoise(p1 - dy);
+    float p1z = snoise(p1 + dz) - snoise(p1 - dz);
+    float p2x = snoise(p2 + dx) - snoise(p2 - dx);
+    float p2z = snoise(p2 + dz) - snoise(p2 - dz);
+    float p3x = snoise(p3 + dx) - snoise(p3 - dx);
+    float p3y = snoise(p3 + dy) - snoise(p3 - dy);
+
+    return vec3(p3y - p2z, p1z - p3x, p2x - p1y) / (2.0 * e);
   }
 
   // ── Region colour palette ─────────────────────────────────────────────────

@@ -1,57 +1,68 @@
 # Synthetic Cortex OS
 
-A live observatory UI for a Persistent Cognitive Brain Architecture.
+Live observatory for a **Persistent Cognitive Brain Architecture** — 10 cortex regions,
+weighted neural pathways, curl-noise particle swarms, procedural lightning, governed autonomy.
 
-## Running
+**Live:** https://cortex-os-production.up.railway.app
 
+## Stack
+- Next.js 15 · React 19 · TypeScript strict
+- React Three Fiber · Three.js r184 · `postprocessing` (raw lib, no r3f wrapper)
+- Tailwind v3 · shadcn/ui · framer-motion · lucide
+- Deployed on Railway · auto-deploy from `main`
+
+## Run locally
 ```bash
 npm install
-npm run dev   # → http://localhost:7070
+cp .env.example .env.local        # optional — set CORTEX_WEBHOOK_SECRET for POST auth
+npm run dev                       # → http://localhost:7070
 ```
 
-## How Telemetry Works
+## Scripts
+- `npm run dev` — dev server on port 7070
+- `npm run build` — production build
+- `npm run start` — production server (respects `$PORT`)
+- `npm run typecheck` — `tsc --noEmit`
+- `npm run lint` — `next lint`
+- `npm run check` — typecheck + lint + build (CI-equivalent)
 
-The UI polls `/api/cortex/state` every 3 seconds. If the file
-`/Users/oracle/.claude/cortex-state.json` exists, activations are merged
-into the live brain display.
-
-To update the live brain state from any Claude Code session:
+## Telemetry bridge
+The observatory reads live activation state from `GET /api/cortex/state`.
+Any session can update the brain by POSTing to the same endpoint:
 
 ```bash
-curl -X POST http://localhost:7070/api/cortex/state \
+curl -X POST https://cortex-os-production.up.railway.app/api/cortex/state \
+  -H "Authorization: Bearer $CORTEX_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
-    "timestamp": "2026-04-18T00:00:00Z",
-    "scenario": "launch",
-    "task": "Deploying Phantom Engine v2",
+    "task": "Building feature X",
+    "scenario": "builder",
     "activations": {
-      "intake": 0.92,
-      "executive": 0.97,
-      "systems": 0.78,
-      "monetization": 0.88,
-      "language": 0.85,
-      "memory": 0.71,
-      "diagnostic": 0.45,
-      "creative": 0.66,
-      "governance": 0.52,
-      "execution": 0.91
+      "intake": 0.8, "executive": 0.95, "systems": 0.9,
+      "monetization": 0.2, "language": 0.6, "memory": 0.75,
+      "diagnostic": 0.4, "creative": 0.7, "governance": 0.6, "execution": 0.85
     },
-    "activePaths": [0, 4, 5, 7, 13],
-    "memory": ["Live task event injected from Claude Code"]
+    "activePaths": [0, 1, 5, 12],
+    "memory": ["lifted curl noise from three.js example", "bumped bloom threshold"]
   }'
 ```
 
-## The 10 Regions
+Shape: all fields optional except activation values (0..1). `activePaths` indices
+into the pathway table (see `pathwayDefs` in `app/page.tsx`). Body cap 16 KB.
+Bearer auth required when `CORTEX_WEBHOOK_SECRET` is set.
 
-| Region | ID | Color | Role |
-|---|---|---|---|
-| Intake | `intake` | Cyan | Signal ingestion & context parsing |
-| Executive | `executive` | Gold | Decision-making & goal orchestration |
-| Systems | `systems` | Blue | Infrastructure & compute management |
-| Monetization | `monetization` | Emerald | Revenue logic & payment flows |
-| Language | `language` | Violet | NLP, generation & comprehension |
-| Memory | `memory` | Silver | Persistent knowledge & recall |
-| Diagnostic | `diagnostic` | Red | Error detection & self-repair |
-| Creative | `creative` | Pink | Novel synthesis & ideation |
-| Governance | `governance` | White | Ethics, safety & constraint enforcement |
-| Execution | `execution` | Orange | Action dispatch & tool invocation |
+## Environment variables
+See `.env.example`. Key vars:
+- `CORTEX_WEBHOOK_SECRET` — bearer token for POST auth. **Set this in prod.**
+- `CORTEX_STATE_PATH` — override state file path
+- `PORT` — respected by `npm run start` (Railway sets this)
+
+## Deploy
+Push to `main` → Railway auto-builds and deploys. No manual steps.
+
+## Architecture
+- `app/page.tsx` — dashboard shell: metrics, inspector, scenarios, tabs (Pathways / Memory / Timeline / Autonomy / Enterprise)
+- `components/cortex-brain-3d.tsx` — R3F scene: curl-noise particle swarms, forked lightning, FakeGlow cores, raw postprocessing
+- `components/error-boundary.tsx` — WebGL context-loss fallback
+- `app/api/cortex/state/route.ts` — telemetry GET/POST with Zod validation
+- `app/icon.tsx` — generated favicon

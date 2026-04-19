@@ -6,7 +6,9 @@
     "dev": "next dev -p 7070",
     "build": "next build",
     "start": "next start -p ${PORT:-7070}",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@radix-ui/react-progress": "^1.1.1",
@@ -24,7 +26,8 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "tailwind-merge": "^2.5.5",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22",

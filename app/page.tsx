@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 
 const CortexBrain3D = dynamic(() => import("@/components/cortex-brain-3d"), { ssr: false });
+import { CortexErrorBoundary } from "@/components/error-boundary";
 import { motion } from "framer-motion";
 import {
   Brain,
@@ -665,10 +666,11 @@ export default function SyntheticCortexOSLiveUI() {
   }, []);
 
   useEffect(() => {
+    if (!running) return;
     fetchTelemetry();
     const id = setInterval(fetchTelemetry, 3000);
     return () => clearInterval(id);
-  }, [fetchTelemetry]);
+  }, [fetchTelemetry, running]);
 
   // Derive regions with activation
   const regions = useMemo<Region[]>(() => {
@@ -871,13 +873,15 @@ export default function SyntheticCortexOSLiveUI() {
               className="relative h-[480px] w-full overflow-hidden rounded-[16px] border border-slate-800"
               style={{ background: "radial-gradient(circle at 50% 45%, rgba(10,14,30,0.95), rgba(2,3,10,1))" }}
             >
-              <CortexBrain3D
-                regions={regions}
-                pathways={pathwayObjects}
-                viewMode={viewMode}
-                selectedRegionId={selectedRegionId}
-                onSelectRegion={(id: string) => setSelectedRegionId(id as RegionId)}
-              />
+              <CortexErrorBoundary>
+                <CortexBrain3D
+                  regions={regions}
+                  pathways={pathwayObjects}
+                  viewMode={viewMode}
+                  selectedRegionId={selectedRegionId}
+                  onSelectRegion={(id: string) => setSelectedRegionId(id as RegionId)}
+                />
+              </CortexErrorBoundary>
             </div>
           </CardContent>
         </Card>
