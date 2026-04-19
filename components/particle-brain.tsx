@@ -83,7 +83,7 @@ interface Signal {
   alpha: number;
 }
 
-const PARTICLE_COUNT = 4500;
+const PARTICLE_COUNT = 6000;
 
 export function ParticleBrain({ height = 480 }: { height?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -151,7 +151,7 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
       vx: (Math.random() - 0.5) * 0.4,
       vy: (Math.random() - 0.5) * 0.4,
       r: 255, g: 255, b: 255, a: 0.6,
-      size: 0.6 + Math.random() * 0.8,
+      size: 0.9 + Math.random() * 1.1,
     }));
 
     let lastTick = -1;
@@ -163,8 +163,9 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
       const H = rect.height;
       const state = stateRef.current;
 
-      // Clear with slight trail (gives light motion blur / persistence)
-      ctx.fillStyle = "rgba(2, 3, 10, 0.22)";
+      // Clear with heavier persistence — trails build up into visible density
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(2, 3, 10, 0.14)";
       ctx.fillRect(0, 0, W, H);
 
       // Build region anchor points in canvas coords
@@ -178,10 +179,28 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
           act,
           mem,
           // Activation influences attractor radius + strength — stronger pulls so density is visible
-          pullRadius: 90 + act * 140 + mem * 60,
-          pullStrength: 0.015 + act * 0.08,
+          pullRadius: 100 + act * 160 + mem * 80,
+          pullStrength: 0.022 + act * 0.10,
         };
       });
+
+      // Region glow auras — soft radial gradients per active region, rendered additively.
+      // This is what makes regions VISIBLE as colored zones emerging from the particle field.
+      ctx.globalCompositeOperation = "lighter";
+      for (const a of regionAnchors) {
+        const vis = a.act * 0.55 + a.mem * 0.35;
+        if (vis < 0.08) continue;
+        const glowRadius = 80 + a.act * 140 + a.mem * 80;
+        const grad = ctx.createRadialGradient(a.cx, a.cy, 0, a.cx, a.cy, glowRadius);
+        const [rr, gg, bb] = a.color;
+        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${Math.min(0.42, vis * 0.5).toFixed(3)})`);
+        grad.addColorStop(0.35, `rgba(${rr},${gg},${bb},${Math.min(0.18, vis * 0.22).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(a.cx, a.cy, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Spawn new signals for active pathways on fresh engine tick
       if (state && state.tick !== lastTick) {
@@ -200,13 +219,12 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
         }
       }
 
-      // Update + render particles
-      ctx.globalCompositeOperation = "lighter"; // additive for emergent glow zones
+      // Update + render particles (already in "lighter" blend mode)
       for (const p of particlesRef.current) {
-        // Flow field: ambient curl-ish wander
-        const t = performance.now() * 0.0002;
-        const nx = Math.sin(p.y * 0.01 + t) * 0.08;
-        const ny = Math.cos(p.x * 0.01 + t * 1.1) * 0.08;
+        // Flow field: ambient curl-ish wander (stronger so particles visibly drift)
+        const t = performance.now() * 0.00025;
+        const nx = Math.sin(p.y * 0.012 + t) * 0.14;
+        const ny = Math.cos(p.x * 0.012 + t * 1.1) * 0.14;
         p.vx += nx;
         p.vy += ny;
 
@@ -257,8 +275,8 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
         }
 
         // Alpha pulses with overall load + local pull
-        const alpha = Math.min(0.95, 0.5 + bestWeight * 0.7 + (state ? state.load * 0.2 : 0));
-        const size = p.size + bestWeight * 1.2;
+        const alpha = Math.min(0.95, 0.55 + bestWeight * 0.55 + (state ? state.load * 0.15 : 0));
+        const size = p.size + bestWeight * 1.6;
 
         ctx.fillStyle = `rgba(${p.r | 0},${p.g | 0},${p.b | 0},${alpha.toFixed(3)})`;
         ctx.fillRect(p.x - size, p.y - size, size * 2, size * 2);
