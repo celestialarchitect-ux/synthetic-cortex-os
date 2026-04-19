@@ -1,9 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import dynamic from "next/dynamic";
-
-const CortexBrain3D = dynamic(() => import("@/components/cortex-brain-3d"), { ssr: false });
-import { CortexErrorBoundary } from "@/components/error-boundary";
 import { motion } from "framer-motion";
 import {
   Brain,
@@ -19,7 +15,6 @@ import {
   Play,
   Pause,
   Gauge,
-  Eye,
   Clock3,
   Layers3,
   Orbit,
@@ -53,7 +48,6 @@ type RegionId =
   | "execution";
 
 type Phase = "saturated" | "active" | "primed" | "cooling";
-type ViewMode = "brain" | "heat" | "pathways";
 
 interface RegionBase {
   id: RegionId;
@@ -598,7 +592,6 @@ export default function SyntheticCortexOSLiveUI() {
   const [timeline, setTimeline] = useState<string[]>(timelineSeed.slice(0, 5));
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>("executive");
   const [showInspector, setShowInspector] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("brain");
   const [memoryUtil, setMemoryUtil] = useState<MemoryUtil>({
     working: 62,
     procedural: 48,
@@ -839,54 +832,11 @@ export default function SyntheticCortexOSLiveUI() {
       <div
         className={`grid gap-4 ${
           showInspector
-            ? "grid-cols-1 lg:grid-cols-[1fr_300px_260px]"
-            : "grid-cols-1 lg:grid-cols-[1fr_300px]"
+            ? "grid-cols-1 lg:grid-cols-[1fr_280px]"
+            : "grid-cols-1"
         }`}
       >
-        {/* Brain Observatory */}
-        <Card className="border-slate-800 bg-slate-900/60">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold text-slate-200 flex items-center gap-2">
-                <Eye className="w-4 h-4 text-cyan-400" />
-                Brain Observatory
-              </CardTitle>
-              <div className="flex items-center gap-1">
-                {(["brain", "heat", "pathways"] as ViewMode[]).map((vm) => (
-                  <button
-                    key={vm}
-                    onClick={() => setViewMode(vm)}
-                    className={`text-xs px-2 py-1 rounded transition-colors ${
-                      viewMode === vm
-                        ? "bg-slate-700 text-slate-100"
-                        : "text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    {vm}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-3">
-            <div
-              className="relative h-[480px] w-full overflow-hidden rounded-[16px] border border-slate-800"
-              style={{ background: "radial-gradient(circle at 50% 45%, rgba(10,14,30,0.95), rgba(2,3,10,1))" }}
-            >
-              <CortexErrorBoundary>
-                <CortexBrain3D
-                  regions={regions}
-                  pathways={pathwayObjects}
-                  viewMode={viewMode}
-                  selectedRegionId={selectedRegionId}
-                  onSelectRegion={(id: string) => setSelectedRegionId(id as RegionId)}
-                />
-              </CortexErrorBoundary>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right column: Task state + Top Regions */}
+        {/* Main column: Task state + Top Regions */}
         <div className="flex flex-col gap-4">
           {/* Task state */}
           <Card className="border-slate-800 bg-slate-900/60">
