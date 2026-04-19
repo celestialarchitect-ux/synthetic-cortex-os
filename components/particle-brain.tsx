@@ -184,17 +184,17 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
         };
       });
 
-      // Region glow auras — soft radial gradients per active region, rendered additively.
-      // This is what makes regions VISIBLE as colored zones emerging from the particle field.
+      // Region glow auras — TIGHT, low-intensity. Just a whisper of pigment at
+      // the region center to tint the particle field, not a neon halo.
       ctx.globalCompositeOperation = "lighter";
       for (const a of regionAnchors) {
-        const vis = a.act * 0.55 + a.mem * 0.35;
-        if (vis < 0.08) continue;
-        const glowRadius = 80 + a.act * 140 + a.mem * 80;
+        const vis = a.act * 0.6 + a.mem * 0.25;
+        if (vis < 0.18) continue;
+        const glowRadius = 22 + a.act * 38 + a.mem * 16;
         const grad = ctx.createRadialGradient(a.cx, a.cy, 0, a.cx, a.cy, glowRadius);
         const [rr, gg, bb] = a.color;
-        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${Math.min(0.42, vis * 0.5).toFixed(3)})`);
-        grad.addColorStop(0.35, `rgba(${rr},${gg},${bb},${Math.min(0.18, vis * 0.22).toFixed(3)})`);
+        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${Math.min(0.10, vis * 0.12).toFixed(3)})`);
+        grad.addColorStop(0.5, `rgba(${rr},${gg},${bb},${Math.min(0.03, vis * 0.04).toFixed(3)})`);
         grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
