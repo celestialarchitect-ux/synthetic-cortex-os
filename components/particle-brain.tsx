@@ -178,9 +178,9 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
           cy: reg.y * H,
           act,
           mem,
-          // Activation influences attractor radius + strength — stronger pulls so density is visible
-          pullRadius: 100 + act * 160 + mem * 80,
-          pullStrength: 0.022 + act * 0.10,
+          // Attractor radius — smaller so clusters are TIGHT rather than filling canvas
+          pullRadius: 50 + act * 80 + mem * 35,
+          pullStrength: 0.018 + act * 0.08,
         };
       });
 
