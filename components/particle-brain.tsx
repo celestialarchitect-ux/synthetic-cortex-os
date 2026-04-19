@@ -74,6 +74,8 @@ interface Particle {
   b: number;
   a: number;
   size: number;
+  life: number;    // remaining ticks of life
+  maxLife: number; // starting life
 }
 
 interface Signal {
@@ -90,6 +92,7 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
   const stateRef = useRef<StreamState | null>(null);
   const particlesRef = useRef<Particle[]>([]);
   const signalsRef = useRef<Signal[]>([]);
+  const spawnRef = useRef<((W: number, H: number, initial?: boolean) => Particle) | null>(null);
 
   // ─── Subscribe to engine stream ────────────────────────────────────────────
   useEffect(() => {
@@ -145,14 +148,36 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
 
     // Seed particles across canvas
     const rect0 = canvas.getBoundingClientRect();
-    particlesRef.current = Array.from({ length: PARTICLE_COUNT }, () => ({
-      x: Math.random() * rect0.width,
-      y: Math.random() * rect0.height,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      r: 255, g: 255, b: 255, a: 0.6,
-      size: 0.9 + Math.random() * 1.1,
-    }));
+    const spawnParticle = (W: number, H: number, initial = false): Particle => {
+      // Spawn from a random edge with inward velocity (unless initial seed — scatter everywhere)
+      if (initial) {
+        return {
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 1.2,
+          vy: (Math.random() - 0.5) * 1.2,
+          r: 255, g: 255, b: 255, a: 0.6,
+          size: 0.9 + Math.random() * 1.1,
+          life: 240 + Math.floor(Math.random() * 360),
+          maxLife: 240 + Math.floor(Math.random() * 360),
+        };
+      }
+      const edge = Math.floor(Math.random() * 4);
+      let x = 0, y = 0, vx = 0, vy = 0;
+      const speed = 0.4 + Math.random() * 0.8;
+      if (edge === 0) { x = Math.random() * W; y = -10;    vx = (Math.random() - 0.5) * 0.6; vy = speed; }
+      if (edge === 1) { x = W + 10;           y = Math.random() * H; vx = -speed; vy = (Math.random() - 0.5) * 0.6; }
+      if (edge === 2) { x = Math.random() * W; y = H + 10; vx = (Math.random() - 0.5) * 0.6; vy = -speed; }
+      if (edge === 3) { x = -10;              y = Math.random() * H; vx = speed;  vy = (Math.random() - 0.5) * 0.6; }
+      const life = 300 + Math.floor(Math.random() * 420); // ~5-12 seconds at 60fps
+      return { x, y, vx, vy, r: 255, g: 255, b: 255, a: 0.6, size: 0.9 + Math.random() * 1.1, life, maxLife: life };
+    };
+
+    particlesRef.current = Array.from({ length: PARTICLE_COUNT }, () =>
+      spawnParticle(rect0.width, rect0.height, true)
+    );
+    // Make spawnParticle accessible inside step() by stashing on ref
+    spawnRef.current = spawnParticle;
 
     let lastTick = -1;
     let rafId = 0;
@@ -220,62 +245,83 @@ export function ParticleBrain({ height = 480 }: { height?: number }) {
       }
 
       // Update + render particles (already in "lighter" blend mode)
-      for (const p of particlesRef.current) {
+      const particles = particlesRef.current;
+      for (let idx = 0; idx < particles.length; idx++) {
+        const p = particles[idx];
+
         // Flow field: ambient curl-ish wander (stronger so particles visibly drift)
-        const t = performance.now() * 0.00025;
-        const nx = Math.sin(p.y * 0.012 + t) * 0.14;
-        const ny = Math.cos(p.x * 0.012 + t * 1.1) * 0.14;
+        const t = performance.now() * 0.00035;
+        const nx = Math.sin(p.y * 0.012 + t) * 0.22;
+        const ny = Math.cos(p.x * 0.012 + t * 1.1) * 0.22;
         p.vx += nx;
         p.vy += ny;
 
-        // Attractor pulls from each active region
+        // Attractor pulls — orbital, not capture.
+        // Force drops to zero inside an inner radius so particles orbit through instead of collapsing.
         let bestColor: [number, number, number] = [255, 255, 255];
         let bestWeight = 0;
         for (const a of regionAnchors) {
           const dx = a.cx - p.x;
           const dy = a.cy - p.y;
-          const d2 = dx * dx + dy * dy;
-          const d = Math.sqrt(d2);
-          if (d < a.pullRadius) {
-            const f = ((a.pullRadius - d) / a.pullRadius) * a.pullStrength;
-            p.vx += dx * f;
-            p.vy += dy * f;
-            // Weight particle color toward strongest attractor in range
-            const w = (a.pullRadius - d) / a.pullRadius * (0.3 + a.act);
-            if (w > bestWeight) {
-              bestWeight = w;
-              bestColor = a.color;
-            }
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= a.pullRadius || d < 1) continue;
+          const innerR = 14 + a.act * 6;                   // no-pull core radius
+          if (d < innerR) continue;                        // inside the core — drift freely (orbital)
+          // Normalized force — strongest at mid-radius, fades toward inner and outer boundaries
+          const normalized = (d - innerR) / (a.pullRadius - innerR);
+          const windowed = Math.sin(normalized * Math.PI); // smooth bump at midrange
+          const f = (a.pullStrength * 0.55) * windowed / Math.max(d, 20);
+          p.vx += dx * f;
+          p.vy += dy * f;
+          // Tangential component — creates orbital motion, keeps things circulating
+          const tangent = a.pullStrength * 0.28 * windowed;
+          p.vx += -dy * tangent / Math.max(d, 20);
+          p.vy += dx * tangent / Math.max(d, 20);
+          // Color weighting
+          const w = windowed * (0.3 + a.act);
+          if (w > bestWeight) {
+            bestWeight = w;
+            bestColor = a.color;
           }
         }
 
-        // Damping
-        p.vx *= 0.96;
-        p.vy *= 0.96;
+        // Much lighter damping — particles keep momentum, swarm doesn't grind to halt
+        p.vx *= 0.992;
+        p.vy *= 0.992;
+        // Soft velocity cap so they don't fling
+        const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (sp > 2.4) { p.vx *= 2.4 / sp; p.vy *= 2.4 / sp; }
 
         p.x += p.vx;
         p.y += p.vy;
 
-        // Wrap at edges
-        if (p.x < 0) p.x += W;
-        if (p.x > W) p.x -= W;
-        if (p.y < 0) p.y += H;
-        if (p.y > H) p.y -= H;
+        // Lifespan — decrement, respawn when expired or drifted off-canvas
+        p.life -= 1;
+        const offCanvas = p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > H + 30;
+        if (p.life <= 0 || offCanvas) {
+          if (spawnRef.current) {
+            particles[idx] = spawnRef.current(W, H, false);
+          }
+          continue;
+        }
 
         // Blend color toward current attractor influence
-        const blend = Math.min(0.1, bestWeight * 0.15);
+        const blend = Math.min(0.1, bestWeight * 0.18);
         p.r += (bestColor[0] - p.r) * blend;
         p.g += (bestColor[1] - p.g) * blend;
         p.b += (bestColor[2] - p.b) * blend;
         // Fade back to white when not attracted
         if (bestWeight < 0.05) {
-          p.r += (230 - p.r) * 0.02;
-          p.g += (230 - p.g) * 0.02;
-          p.b += (230 - p.b) * 0.02;
+          p.r += (230 - p.r) * 0.015;
+          p.g += (230 - p.g) * 0.015;
+          p.b += (230 - p.b) * 0.015;
         }
 
-        // Alpha pulses with overall load + local pull
-        const alpha = Math.min(0.95, 0.55 + bestWeight * 0.55 + (state ? state.load * 0.15 : 0));
+        // Life-based alpha — fade in + fade out at edges of life for smooth recycling
+        const lifeFrac = p.life / p.maxLife;
+        const lifeFade = Math.min(1, lifeFrac * 5, (1 - lifeFrac) * 5 + 0.4);
+
+        const alpha = Math.min(0.95, (0.45 + bestWeight * 0.55 + (state ? state.load * 0.12 : 0)) * lifeFade);
         const size = p.size + bestWeight * 1.6;
 
         ctx.fillStyle = `rgba(${p.r | 0},${p.g | 0},${p.b | 0},${alpha.toFixed(3)})`;
