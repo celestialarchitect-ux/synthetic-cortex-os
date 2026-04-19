@@ -1,76 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import os from "os";
 import { z } from "zod";
+import { getState, injectExternalTask, REGION_IDS, type RegionId } from "@/lib/cortex-engine";
 
 export const dynamic = "force-dynamic";
 
-// Path resolution: env > tmp (prod) > local dev default
-const LOCAL_DEV_DEFAULT = path.join(os.homedir(), ".claude", "cortex-state.json");
-const TMP_PATH = path.join(os.tmpdir(), "cortex-state.json");
+// ─── Schemas ────────────────────────────────────────────────────────────────
 
-function statePath(): string {
-  if (process.env.CORTEX_STATE_PATH) return process.env.CORTEX_STATE_PATH;
-  if (process.env.RAILWAY_ENVIRONMENT) return TMP_PATH;
-  return LOCAL_DEV_DEFAULT;
-}
-
-// ─── Schema for telemetry state ──────────────────────────────────────────────
-const StateSchema = z.object({
-  timestamp: z.string().optional(),
-  task: z.string().max(500).optional(),
-  scenario: z.string().max(64).optional(),
-  mode: z.string().max(128).optional(),
-  activations: z
-    .object({
-      intake: z.number().min(0).max(1),
-      executive: z.number().min(0).max(1),
-      systems: z.number().min(0).max(1),
-      monetization: z.number().min(0).max(1),
-      language: z.number().min(0).max(1),
-      memory: z.number().min(0).max(1),
-      diagnostic: z.number().min(0).max(1),
-      creative: z.number().min(0).max(1),
-      governance: z.number().min(0).max(1),
-      execution: z.number().min(0).max(1),
-    })
-    .optional(),
-  activePaths: z.array(z.number().int().min(0).max(13)).max(20).optional(),
-  memory: z.array(z.string().max(500)).max(20).optional(),
+const ActivationSchema = z.object({
+  intake:       z.number().min(0).max(1).optional(),
+  executive:    z.number().min(0).max(1).optional(),
+  systems:      z.number().min(0).max(1).optional(),
+  monetization: z.number().min(0).max(1).optional(),
+  language:     z.number().min(0).max(1).optional(),
+  memory:       z.number().min(0).max(1).optional(),
+  diagnostic:   z.number().min(0).max(1).optional(),
+  creative:     z.number().min(0).max(1).optional(),
+  governance:   z.number().min(0).max(1).optional(),
+  execution:    z.number().min(0).max(1).optional(),
 });
 
-const MAX_BODY_BYTES = 16 * 1024; // 16 KB
+const TaskSchema = z.object({
+  task: z.string().max(500),
+  targets: ActivationSchema,
+  duration_seconds: z.number().min(1).max(600).optional(),
+});
 
-const DEFAULT_STATE = {
-  timestamp: new Date().toISOString(),
-  task: "Idle — no active session",
-  scenario: "idle",
-  activations: {
-    intake: 0.2, executive: 0.3, systems: 0.15,
-    monetization: 0.1, language: 0.15, memory: 0.25,
-    diagnostic: 0.1, creative: 0.1, governance: 0.3, execution: 0.15,
-  },
-  activePaths: [0, 10],
-  memory: [] as string[],
-};
+const MAX_BODY_BYTES = 16 * 1024;
+
+// ─── GET: return the engine's live state (flattened for the frontend) ──────
 
 export async function GET() {
-  try {
-    const raw = await fs.readFile(statePath(), "utf-8");
-    const parsed: unknown = JSON.parse(raw);
-    const valid = StateSchema.safeParse(parsed);
-    if (!valid.success) {
-      return NextResponse.json({ ...DEFAULT_STATE, timestamp: new Date().toISOString() });
-    }
-    return NextResponse.json(valid.data);
-  } catch {
-    return NextResponse.json({ ...DEFAULT_STATE, timestamp: new Date().toISOString() });
+  const state = await getState();
+  const activations: Record<string, number> = {};
+  const memoryWeights: Record<string, number> = {};
+  for (const id of REGION_IDS) {
+    activations[id] = round3(state.regions[id].activation);
+    memoryWeights[id] = round3(state.regions[id].memory_weight);
   }
+  const pathways = state.pathways.map((p) => ({
+    strength: round3(p.strength),
+    flow: round3(p.flow),
+    usage: p.usage_count,
+  }));
+  const activePaths: number[] = [];
+  for (let i = 0; i < pathways.length; i++) {
+    if (pathways[i].flow > 0.2) activePaths.push(i);
+  }
+  return NextResponse.json({
+    timestamp: new Date(state.last_tick_time).toISOString(),
+    tick: state.tick,
+    uptime_seconds: Math.floor((Date.now() - state.started_at) / 1000),
+    task: state.active_task ?? "Idle — baseline cognition running",
+    scenario: state.active_task ? "active" : "idle",
+    activations,
+    memory_weights: memoryWeights,
+    pathways,
+    active_paths: activePaths,
+    subclusters: state.subclusters.map((sc) => ({
+      parent: sc.parent,
+      name: sc.name,
+      strength: round3(sc.strength),
+    })),
+    load: round3(state.load),
+    consolidations: state.consolidations,
+    structural_audits: state.structural_audits,
+    memory_log: state.memory_log.slice(0, 8),
+  });
 }
 
+// ─── POST: inject an external task (requires auth in prod) ──────────────────
+
 export async function POST(request: NextRequest) {
-  // Auth: require bearer secret in prod (skipped in local dev if not set)
   const requiredSecret = process.env.CORTEX_WEBHOOK_SECRET;
   if (requiredSecret) {
     const auth = request.headers.get("authorization") ?? "";
@@ -80,30 +80,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Body size cap
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "payload too large" }, { status: 413 });
   }
-
-  let rawText: string;
-  try {
-    rawText = await request.text();
-  } catch {
-    return NextResponse.json({ error: "invalid body" }, { status: 400 });
-  }
-  if (rawText.length > MAX_BODY_BYTES) {
+  const raw = await request.text();
+  if (raw.length > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "payload too large" }, { status: 413 });
   }
 
-  // Parse + validate
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawText);
+    parsed = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
-  const valid = StateSchema.safeParse(parsed);
+  const valid = TaskSchema.safeParse(parsed);
   if (!valid.success) {
     return NextResponse.json(
       { error: "schema validation failed", issues: valid.error.issues.slice(0, 5) },
@@ -111,19 +103,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Write (merge timestamp if missing)
-  const toWrite = {
-    ...valid.data,
-    timestamp: valid.data.timestamp ?? new Date().toISOString(),
-  };
-  try {
-    const file = statePath();
-    const dir = path.dirname(file);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(file, JSON.stringify(toWrite, null, 2), "utf-8");
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "write failed";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  const durationTicks = valid.data.duration_seconds
+    ? Math.floor(valid.data.duration_seconds * 4)
+    : undefined;
+
+  const targets: Partial<Record<RegionId, number>> = valid.data.targets;
+  await injectExternalTask(valid.data.task, targets, durationTicks);
+  return NextResponse.json({ ok: true, injected: valid.data.task });
+}
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }

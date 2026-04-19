@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { ParticleBrain } from "@/components/particle-brain";
 import {
   Brain,
   Network,
@@ -215,22 +216,19 @@ export default function CortexDashboard() {
           </div>
         </header>
 
-        {/* Brain visual (forked from DGFX/codrops-dreamy-particles, served from /brain) */}
+        {/* Particle brain — state-driven, emergent from engine ticks */}
         <Card className="border-slate-800 bg-slate-950 overflow-hidden">
           <CardContent className="p-0 relative">
             <div className="absolute top-3 left-4 z-10 flex items-center gap-2 pointer-events-none">
               <Brain className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs text-slate-400 uppercase tracking-wider font-mono">Brain Visual</span>
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-mono">
+                Particle Brain
+              </span>
               <Badge className="bg-slate-900/80 backdrop-blur border-slate-700 text-slate-400 text-[9px]">
-                forked · DGFX/codrops-dreamy-particles
+                engine · 4 Hz tick · emergent regions
               </Badge>
             </div>
-            <iframe
-              src="/brain/index.html"
-              title="Cortex brain visualization"
-              className="w-full h-[480px] border-0 block"
-              loading="lazy"
-            />
+            <ParticleBrain height={480} />
           </CardContent>
         </Card>
 
